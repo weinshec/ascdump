@@ -53,6 +53,7 @@ impl FromStr for CanFrame {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut frame = Self::new();
         let mut tokens = s.split_whitespace();
+        let can_fd = s.contains("CANFD");
 
         if let Some(timestamp_token) = tokens.next() {
             frame.timestamp =
@@ -63,7 +64,10 @@ impl FromStr for CanFrame {
             return Err(AscParseError::InvalidFormat { str: s.to_string() });
         }
 
-        if let Some(bus_id_token) = tokens.next() {
+        if let Some(bus_id_token) = match can_fd {
+            true => tokens.nth(1),
+            false => tokens.next(),
+        } {
             frame.bus_id =
                 u8::from_str(bus_id_token).map_err(|err| AscParseError::InvalidBusId {
                     str: err.to_string(),
@@ -72,7 +76,10 @@ impl FromStr for CanFrame {
             return Err(AscParseError::InvalidFormat { str: s.to_string() });
         }
 
-        if let Some(id_token) = tokens.next() {
+        if let Some(id_token) = match can_fd {
+            true => tokens.nth(1),
+            false => tokens.next(),
+        } {
             frame.id = u32::from_str_radix(id_token.trim_end_matches('x'), 16).map_err(|err| {
                 AscParseError::InvalidFrameId {
                     str: err.to_string(),
@@ -82,7 +89,10 @@ impl FromStr for CanFrame {
             return Err(AscParseError::InvalidFormat { str: s.to_string() });
         }
 
-        if let Some(length_token) = tokens.nth(2) {
+        if let Some(length_token) = match can_fd {
+            true => tokens.nth(3),
+            false => tokens.nth(2),
+        } {
             frame.length =
                 usize::from_str(length_token).map_err(|err| AscParseError::InvalidLengthField {
                     str: err.to_string(),
@@ -142,6 +152,11 @@ mod tests {
 
         let invalid_length = String::from("0.962604");
         assert_eq!(true, CanFrame::from_str(&invalid_length).is_err());
+
+        let line_canfd =
+            String::from("7.392600 CANFD 1 Rx 6e   1 0 6 6 ec 0a 22 ff ff f1 0 0 3000 0 0 0 0 0");
+        let frame = CanFrame::from_str(&line_canfd).expect("Uncaught error while parsing");
+        assert_eq!(frame.bus_id, 1);
     }
 
     #[test]
@@ -157,6 +172,11 @@ mod tests {
 
         let invalid_length = String::from("0.962604 3");
         assert_eq!(true, CanFrame::from_str(&invalid_length).is_err());
+
+        let line_canfd =
+            String::from("7.392600 CANFD 1 Rx 6e   1 0 6 6 ec 0a 22 ff ff f1 0 0 3000 0 0 0 0 0");
+        let frame = CanFrame::from_str(&line_canfd).expect("Uncaught error while parsing");
+        assert_eq!(frame.id, 0x6e);
     }
 
     #[test]
@@ -165,6 +185,12 @@ mod tests {
             String::from("0.962892 3 1f78c410x Rx d 8 02 00 00 00 24 00 70 03 Length = 0 BitCount = 0 ID = 528008208x");
         let frame = CanFrame::from_str(&line).expect("Uncaught error while parsing");
         assert_eq!(frame.id, 0x1f78c410);
+
+        let line_canfd = String::from(
+            "7.392600 CANFD 1 Rx 12b80210x 1 0 6 6 ec 0a 22 ff ff f1 0 0 3000 0 0 0 0 0",
+        );
+        let frame = CanFrame::from_str(&line_canfd).expect("Uncaught error while parsing");
+        assert_eq!(frame.id, 0x12b80210);
     }
 
     #[test]
@@ -188,5 +214,11 @@ mod tests {
 
         let invalid_length_2 = String::from("0.962604 3 368 Rx d 4 cc");
         assert_eq!(true, CanFrame::from_str(&invalid_length_2).is_err());
+
+        let line_canfd =
+            String::from("7.392600 CANFD 1 Rx 6e   1 0 6 6 ec 0a 22 ff ff f1 0 0 3000 0 0 0 0 0");
+        let frame = CanFrame::from_str(&line_canfd).expect("Uncaught error while parsing");
+        assert_eq!(frame.length, 6);
+        assert_eq!(frame.payload, vec![0xEC, 0x0A, 0x22, 0xFF, 0xFF, 0xF1]);
     }
 }
