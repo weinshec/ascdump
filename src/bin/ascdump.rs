@@ -1,12 +1,9 @@
 use std::fs::File;
-use std::io::prelude::*;
-use std::io::BufReader;
-use std::str::FromStr;
 
 extern crate clap;
 use clap::{App, Arg};
 
-use ascdump::CanFrame;
+use ascdump::AscParser;
 
 fn main() {
     let args = App::new("ascdump")
@@ -21,15 +18,10 @@ fn main() {
         )
         .get_matches();
 
-    let input_file_path = args.value_of("INPUT").expect("save to call");
-    let input_file = File::open(input_file_path).expect("TODO: remove this unwrap");
-    let input_reader = BufReader::new(input_file);
+    let input_file = File::open(args.value_of("INPUT").unwrap()).expect("TODO: remove this unwrap");
+    let parser = AscParser::new(input_file);
 
-    for line in input_reader.lines() {
-        if let Ok(line) = line {
-            if let Ok(frame) = CanFrame::from_str(&line) {
-                println!("{:?}", frame);
-            }
-        }
+    for frame in parser.filter(|frame| frame.id == 2000) {
+        println!("{:?}", frame);
     }
 }

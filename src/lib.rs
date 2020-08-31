@@ -1,14 +1,18 @@
+use std::io::BufRead;
+use std::io::BufReader;
+use std::io::Lines;
+use std::io::Read;
 use std::str::FromStr;
 
 use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct CanFrame {
-    timestamp: f32,
-    bus_id: u8,
-    id: u32,
-    length: usize,
-    payload: Vec<u8>,
+    pub timestamp: f32,
+    pub bus_id: u8,
+    pub id: u32,
+    pub length: usize,
+    pub payload: Vec<u8>,
 }
 
 impl CanFrame {
@@ -20,6 +24,39 @@ impl CanFrame {
             length: 0,
             payload: vec![],
         }
+    }
+}
+
+pub struct AscParser<R: Read> {
+    lines: Lines<BufReader<R>>,
+}
+
+impl<R> AscParser<R>
+where
+    R: Read,
+{
+    pub fn new(input: R) -> Self {
+        let reader = BufReader::new(input);
+        Self {
+            lines: reader.lines(),
+        }
+    }
+}
+
+impl<R> Iterator for AscParser<R>
+where
+    R: Read,
+{
+    type Item = CanFrame;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(Ok(line)) = self.lines.next() {
+            match CanFrame::from_str(&line) {
+                Ok(frame) => return Some(frame),
+                Err(_) => return self.next(),
+            }
+        }
+        None
     }
 }
 
@@ -220,5 +257,59 @@ mod tests {
         let frame = CanFrame::from_str(&line_canfd).expect("Uncaught error while parsing");
         assert_eq!(frame.length, 6);
         assert_eq!(frame.payload, vec![0xEC, 0x0A, 0x22, 0xFF, 0xFF, 0xF1]);
+    }
+
+    #[test]
+    fn iterate_over_lines() {
+        let lines = String::from(
+            "0.962604 3 368 Rx d 4 cc 55 01 00 Length = 0 BitCount = 0 ID = 872\n\
+            7.392600 CANFD 1 Rx 6e   1 0 6 6 ec 0a 22 ff ff f1 0 0 3000 0 0 0 0 0",
+        );
+
+        let mut parser = AscParser::new(lines.as_bytes());
+
+        assert_eq!(
+            parser.next(),
+            Some(CanFrame {
+                timestamp: 0.962604,
+                bus_id: 3,
+                id: 0x368,
+                length: 4,
+                payload: vec![0xCC, 0x55, 0x01, 0x00]
+            })
+        );
+        assert_eq!(
+            parser.next(),
+            Some(CanFrame {
+                timestamp: 7.392600,
+                bus_id: 1,
+                id: 0x6e,
+                length: 6,
+                payload: vec![0xEC, 0x0A, 0x22, 0xFF, 0xFF, 0xF1]
+            })
+        );
+        assert_eq!(parser.next(), None);
+    }
+
+    #[test]
+    fn iterate_over_lines_with_bus_filter() {
+        let lines = String::from(
+            "0.962604 3 368 Rx d 4 cc 55 01 00 Length = 0 BitCount = 0 ID = 872\n\
+            7.392600 CANFD 1 Rx 6e   1 0 6 6 ec 0a 22 ff ff f1 0 0 3000 0 0 0 0 0",
+        );
+
+        let mut parser = AscParser::new(lines.as_bytes()).filter(|frame| frame.bus_id == 1);
+
+        assert_eq!(
+            parser.next(),
+            Some(CanFrame {
+                timestamp: 7.392600,
+                bus_id: 1,
+                id: 0x6e,
+                length: 6,
+                payload: vec![0xEC, 0x0A, 0x22, 0xFF, 0xFF, 0xF1]
+            })
+        );
+        assert_eq!(parser.next(), None);
     }
 }
