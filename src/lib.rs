@@ -3,7 +3,7 @@ use std::str::FromStr;
 use thiserror::Error;
 
 #[derive(Debug)]
-struct CanFrame {
+pub struct CanFrame {
     timestamp: f32,
     bus_id: u8,
     id: u32,
