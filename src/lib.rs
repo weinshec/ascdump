@@ -73,11 +73,11 @@ impl FromStr for CanFrame {
         }
 
         if let Some(id_token) = tokens.next() {
-            // TODO: remove trailing 'x' by using on id_token .trim_end_matches('x')
-            frame.id =
-                u32::from_str_radix(id_token, 16).map_err(|err| AscParseError::InvalidFrameId {
+            frame.id = u32::from_str_radix(id_token.trim_end_matches('x'), 16).map_err(|err| {
+                AscParseError::InvalidFrameId {
                     str: err.to_string(),
-                })?;
+                }
+            })?;
         } else {
             return Err(AscParseError::InvalidFormat { str: s.to_string() });
         }
@@ -157,6 +157,14 @@ mod tests {
 
         let invalid_length = String::from("0.962604 3");
         assert_eq!(true, CanFrame::from_str(&invalid_length).is_err());
+    }
+
+    #[test]
+    fn parse_can_frame_from_string_extended_can_id() {
+        let line =
+            String::from("0.962892 3 1f78c410x Rx d 8 02 00 00 00 24 00 70 03 Length = 0 BitCount = 0 ID = 528008208x");
+        let frame = CanFrame::from_str(&line).expect("Uncaught error while parsing");
+        assert_eq!(frame.id, 0x1f78c410);
     }
 
     #[test]
